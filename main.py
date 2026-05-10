@@ -1,3 +1,5 @@
+import static_ffmpeg
+static_ffmpeg.add_paths()
 """
 YTGrab Backend — FastAPI Application Entry Point
 Deploy on Railway.app or any ASGI host.
