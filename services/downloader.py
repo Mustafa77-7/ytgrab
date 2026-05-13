@@ -1,21 +1,14 @@
-"""
-YTGrab Backend — Downloader Service
-Handles metadata extraction, thumbnails, and preflight checks.
-"""
 import yt_dlp
 import asyncio
-from config import MAX_VIDEO_DURATION
 
 
 async def get_video_info(url: str, timeout: int = 10) -> dict:
-    """Fetch YouTube video metadata asynchronously with timeout."""
     def _fetch():
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
             "noplaylist": True,
-            "extract_flat": True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -26,7 +19,7 @@ async def get_video_info(url: str, timeout: int = 10) -> dict:
                 "channel": info.get("uploader", "Unknown"),
                 "view_count": info.get("view_count", 0),
             }
-            
+
     try:
         return await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=timeout)
     except asyncio.TimeoutError:
@@ -34,24 +27,8 @@ async def get_video_info(url: str, timeout: int = 10) -> dict:
 
 
 async def extract_thumbnail(url: str, timeout: int = 10) -> str:
-    """Extract only the highest quality thumbnail URL."""
     info = await get_video_info(url, timeout=timeout)
     thumbnail = info.get("thumbnail")
     if not thumbnail:
         raise ValueError("Thumbnail not available for this video.")
     return thumbnail
-
-
-def preflight_check(url: str) -> dict:
-    """Synchronous preflight check used during conversion to validate duration."""
-    with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True, "noplaylist": True, "extract_flat": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
-        duration = info.get("duration", 0)
-        title = info.get("title", "video")
-
-    if duration and duration > MAX_VIDEO_DURATION:
-        raise ValueError(
-            f"Video is too long (max {MAX_VIDEO_DURATION // 60} minutes). "
-            "Please try a shorter video."
-        )
-    return {"title": title, "duration": duration}
