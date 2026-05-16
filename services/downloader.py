@@ -6,6 +6,7 @@ import yt_dlp
 import asyncio
 from config import MAX_VIDEO_DURATION
 
+
 COMMON_OPTS = {
     "quiet": True,
     "no_warnings": True,
@@ -29,11 +30,7 @@ COMMON_OPTS = {
 async def get_video_info(url: str, timeout: int = 15) -> dict:
     """Fetch YouTube video metadata asynchronously with timeout."""
     def _fetch():
-        ydl_opts = {
-            **COMMON_OPTS,
-            "extract_flat": True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(COMMON_OPTS) as ydl:
             info = ydl.extract_info(url, download=False)
             return {
                 "title": info.get("title", "Unknown"),
@@ -60,11 +57,7 @@ async def extract_thumbnail(url: str, timeout: int = 15) -> str:
 
 def preflight_check(url: str) -> dict:
     """Synchronous preflight check used during conversion to validate duration."""
-    ydl_opts = {
-        **COMMON_OPTS,
-        "extract_flat": True,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(COMMON_OPTS) as ydl:
         info = ydl.extract_info(url, download=False)
         duration = info.get("duration", 0)
         title = info.get("title", "video")
