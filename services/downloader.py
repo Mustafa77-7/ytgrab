@@ -12,31 +12,26 @@ COOKIES_PATH = "/tmp/yt_cookies.txt"
 
 
 def _write_cookies():
-    """Write YouTube cookies from base64 env variable to temp file."""
     b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
     if b64:
         try:
             content = base64.b64decode(b64).decode("utf-8")
             with open(COOKIES_PATH, "w") as f:
                 f.write(content)
-            return True
         except Exception:
             pass
-    return False
+
+_write_cookies()
 
 
 def _get_opts():
-    """Return yt-dlp options with fresh cookies."""
-    _write_cookies()
     opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
         "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "mweb"],
-            }
+            "youtube": {"player_client": ["ios", "mweb"]}
         },
         "http_headers": {
             "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5_1 like Mac OS X)",
@@ -52,6 +47,7 @@ def _get_opts():
 async def get_video_info(url: str, timeout: int = 15) -> dict:
     """Fetch YouTube video metadata asynchronously with timeout."""
     def _fetch():
+        _write_cookies()
         with yt_dlp.YoutubeDL(_get_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
             return {
@@ -61,7 +57,6 @@ async def get_video_info(url: str, timeout: int = 15) -> dict:
                 "channel": info.get("uploader", "Unknown"),
                 "view_count": info.get("view_count", 0),
             }
-
     try:
         return await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=timeout)
     except asyncio.TimeoutError:
@@ -69,7 +64,6 @@ async def get_video_info(url: str, timeout: int = 15) -> dict:
 
 
 async def extract_thumbnail(url: str, timeout: int = 15) -> str:
-    """Extract only the highest quality thumbnail URL."""
     info = await get_video_info(url, timeout=timeout)
     thumbnail = info.get("thumbnail")
     if not thumbnail:
@@ -78,12 +72,11 @@ async def extract_thumbnail(url: str, timeout: int = 15) -> str:
 
 
 def preflight_check(url: str) -> dict:
-    """Synchronous preflight check used during conversion to validate duration."""
+    _write_cookies()
     with yt_dlp.YoutubeDL(_get_opts()) as ydl:
         info = ydl.extract_info(url, download=False)
         duration = info.get("duration", 0)
         title = info.get("title", "video")
-
     if duration and duration > MAX_VIDEO_DURATION:
         raise ValueError(
             f"Video is too long (max {MAX_VIDEO_DURATION // 60} minutes). "
