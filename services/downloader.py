@@ -2,16 +2,30 @@
 Convert-YT Backend — Downloader Service
 Handles metadata extraction, thumbnails, and preflight checks.
 """
+import os
 import yt_dlp
 import asyncio
 from config import MAX_VIDEO_DURATION
 
+COOKIES_PATH = "/tmp/yt_cookies.txt"
+
+def _write_cookies():
+    """Write YouTube cookies from env variable to temp file."""
+    cookies_content = os.getenv("YOUTUBE_COOKIES", "")
+    if cookies_content:
+        with open(COOKIES_PATH, "w") as f:
+            f.write(cookies_content)
+        return True
+    return False
+
+_write_cookies()
 
 COMMON_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
+    "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,
     "extractor_args": {
         "youtube": {
             "player_client": ["ios", "mweb"],
@@ -55,6 +69,7 @@ async def extract_thumbnail(url: str, timeout: int = 15) -> str:
 
 def preflight_check(url: str) -> dict:
     """Synchronous preflight check used during conversion to validate duration."""
+    _write_cookies()
     with yt_dlp.YoutubeDL(COMMON_OPTS) as ydl:
         info = ydl.extract_info(url, download=False)
         duration = info.get("duration", 0)
