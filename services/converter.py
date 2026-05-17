@@ -2,6 +2,7 @@
 Convert-YT Backend — Converter Service
 Handles video/audio extraction via yt-dlp.
 """
+import os
 import uuid
 import yt_dlp
 import asyncio
@@ -11,30 +12,31 @@ from config import (
     VALID_AUDIO_QUALITIES, VALID_VIDEO_QUALITIES,
     DEFAULT_AUDIO_QUALITY, DEFAULT_VIDEO_QUALITY,
 )
-from services.downloader import preflight_check
-
+from services.downloader import preflight_check, _write_cookies, COOKIES_PATH
 
 tmp_dir = Path(TMP_DIR_PATH)
 tmp_dir.mkdir(exist_ok=True)
 
-# ─── Common yt-dlp options to bypass YouTube bot detection ───
-COMMON_OPTS = {
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["web", "android"],
-        }
-    },
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-    "socket_timeout": 30,
-    "retries": 3,
-}
+
+def _get_download_opts(extra: dict) -> dict:
+    _write_cookies()
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "extractor_args": {
+            "youtube": {"player_client": ["ios", "mweb"]}
+        },
+        "http_headers": {
+            "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5_1 like Mac OS X)",
+        },
+        "socket_timeout": 30,
+        "retries": 5,
+    }
+    if os.path.exists(COOKIES_PATH):
+        opts["cookiefile"] = COOKIES_PATH
+    opts.update(extra)
+    return opts
 
 
 async def convert_to_mp3(url: str, quality: str, timeout: int = 300) -> dict:
@@ -44,11 +46,9 @@ async def convert_to_mp3(url: str, quality: str, timeout: int = 300) -> dict:
         file_id = str(uuid.uuid4())[:10]
         out_template = str(tmp_dir / f"{file_id}.%(ext)s")
 
-        # Sync preflight check
         info = preflight_check(url)
 
-        ydl_opts = {
-            **COMMON_OPTS,
+        ydl_opts = _get_download_opts({
             "format": "bestaudio/best",
             "outtmpl": out_template,
             "postprocessors": [{
@@ -56,7 +56,7 @@ async def convert_to_mp3(url: str, quality: str, timeout: int = 300) -> dict:
                 "preferredcodec": "mp3",
                 "preferredquality": audio_quality,
             }],
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -83,15 +83,13 @@ async def convert_to_mp4(url: str, quality: str, timeout: int = 300) -> dict:
         file_id = str(uuid.uuid4())[:10]
         out_template = str(tmp_dir / f"{file_id}.%(ext)s")
 
-        # Sync preflight check
         info = preflight_check(url)
 
-        ydl_opts = {
-            **COMMON_OPTS,
+        ydl_opts = _get_download_opts({
             "format": f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/best[height<={height}][ext=mp4]/best",
             "outtmpl": out_template,
             "merge_output_format": "mp4",
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -111,16 +109,11 @@ async def convert_to_mp4(url: str, quality: str, timeout: int = 300) -> dict:
         raise TimeoutError("Conversion timed out. The video might be too long or YouTube is throttling.")
 
 
-# ─── Private Helpers ─────────────────────────────────
-
 def _find_output_file(file_id: str, expected_ext: str) -> Path:
-    """Locate the output file after conversion."""
     out_file = tmp_dir / f"{file_id}.{expected_ext}"
     if out_file.exists():
         return out_file
-
     matches = list(tmp_dir.glob(f"{file_id}.*"))
     if matches:
         return matches[0]
-
     raise FileNotFoundError("Output file not found. Conversion may have failed.")
