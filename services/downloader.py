@@ -3,46 +3,56 @@ Convert-YT Backend — Downloader Service
 Handles metadata extraction, thumbnails, and preflight checks.
 """
 import os
+import base64
 import yt_dlp
 import asyncio
 from config import MAX_VIDEO_DURATION
 
 COOKIES_PATH = "/tmp/yt_cookies.txt"
 
+
 def _write_cookies():
-    """Write YouTube cookies from env variable to temp file."""
-    cookies_content = os.getenv("YOUTUBE_COOKIES", "")
-    if cookies_content:
-        with open(COOKIES_PATH, "w") as f:
-            f.write(cookies_content)
-        return True
+    """Write YouTube cookies from base64 env variable to temp file."""
+    b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
+    if b64:
+        try:
+            content = base64.b64decode(b64).decode("utf-8")
+            with open(COOKIES_PATH, "w") as f:
+                f.write(content)
+            return True
+        except Exception:
+            pass
     return False
 
-_write_cookies()
 
-COMMON_OPTS = {
-    "quiet": True,
-    "no_warnings": True,
-    "skip_download": True,
-    "noplaylist": True,
-    "cookiefile": COOKIES_PATH if os.path.exists(COOKIES_PATH) else None,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["ios", "mweb"],
-        }
-    },
-    "http_headers": {
-        "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5_1 like Mac OS X)",
-    },
-    "socket_timeout": 30,
-    "retries": 5,
-}
+def _get_opts():
+    """Return yt-dlp options with fresh cookies."""
+    _write_cookies()
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "mweb"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5_1 like Mac OS X)",
+        },
+        "socket_timeout": 30,
+        "retries": 5,
+    }
+    if os.path.exists(COOKIES_PATH):
+        opts["cookiefile"] = COOKIES_PATH
+    return opts
 
 
 async def get_video_info(url: str, timeout: int = 15) -> dict:
     """Fetch YouTube video metadata asynchronously with timeout."""
     def _fetch():
-        with yt_dlp.YoutubeDL(COMMON_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(_get_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
             return {
                 "title": info.get("title", "Unknown"),
@@ -69,8 +79,7 @@ async def extract_thumbnail(url: str, timeout: int = 15) -> str:
 
 def preflight_check(url: str) -> dict:
     """Synchronous preflight check used during conversion to validate duration."""
-    _write_cookies()
-    with yt_dlp.YoutubeDL(COMMON_OPTS) as ydl:
+    with yt_dlp.YoutubeDL(_get_opts()) as ydl:
         info = ydl.extract_info(url, download=False)
         duration = info.get("duration", 0)
         title = info.get("title", "video")
